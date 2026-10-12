@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/a-pelikh/tripgo/api"
 	"github.com/a-pelikh/tripgo/internal/config"
 	httpHandler "github.com/a-pelikh/tripgo/internal/handler/http"
 	"github.com/a-pelikh/tripgo/internal/logger"
@@ -45,17 +44,16 @@ func main() {
 		return
 	}
 
-	txManager := postgresTxManager.New(log, pool)
+	txManager := postgresTxManager.New(log, pool, cfg.DB.QueryTimeout)
 
 	tripRepository := postgresTripRepository.New(pool, cfg.DB.QueryTimeout)
 	tripService := trip.New(txManager, tripRepository)
 
-	router := api.HandlerWithOptions(
-		httpHandler.New(log, tripService),
-		api.ChiServerOptions{
-			ErrorHandlerFunc: httpHandler.HandleBindingError,
-		},
-	)
+	router, err := httpHandler.NewRouter(log, tripService)
+	if err != nil {
+		log.Error("failed to initialize http router", "error", err)
+		return
+	}
 	httpServer := http.Server{
 		Addr:              cfg.HTTP.Addr,
 		Handler:           router,
@@ -65,16 +63,26 @@ func main() {
 		IdleTimeout:       cfg.HTTP.IdleTimeout,
 	}
 
+	serverErr := make(chan error, 1)
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.ErrorContext(ctx, "failed while serving http", "error", err)
-		}
+		serverErr <- httpServer.ListenAndServe()
 	}()
 
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case err := <-serverErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("failed while serving http", "error", err)
+		}
+		return
+	}
+
 	shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer shutdownCtxCancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Error("failed to shutdown http server", "error", err)
+		if closeErr := httpServer.Close(); closeErr != nil {
+			log.Error("failed to close http server", "error", closeErr)
+		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/a-pelikh/tripgo/api"
 	"github.com/a-pelikh/tripgo/internal/model"
 	"github.com/google/uuid"
+	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
 )
 
 type tripService interface {
@@ -32,12 +34,34 @@ func New(logger *slog.Logger, tripServ tripService) api.ServerInterface {
 	}
 }
 
+func NewRouter(logger *slog.Logger, tripServ tripService) (http.Handler, error) {
+	spec, err := api.GetSpec()
+	if err != nil {
+		return nil, fmt.Errorf("load OpenAPI spec: %w", err)
+	}
+
+	validator := nethttpmiddleware.OapiRequestValidatorWithOptions(
+		spec,
+		&nethttpmiddleware.Options{
+			DoNotValidateServers: true,
+			ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, _ nethttpmiddleware.ErrorHandlerOpts) {
+				HandleBindingError(w, r, err)
+			},
+		},
+	)
+
+	return api.HandlerWithOptions(
+		New(logger, tripServ),
+		api.ChiServerOptions{
+			Middlewares:      []api.MiddlewareFunc{validator},
+			ErrorHandlerFunc: HandleBindingError,
+		},
+	), nil
+}
+
 func (h *handler) CreateTrip(w http.ResponseWriter, r *http.Request, _ api.CreateTripParams) {
 	var request api.CreateTripJSONRequestBody
-
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-
 	if err := decoder.Decode(&request); err != nil {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "Invalid request", "Request body is invalid")
 		return
