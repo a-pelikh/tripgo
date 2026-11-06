@@ -1,9 +1,6 @@
-package model
+package trip
 
-import (
-	"fmt"
-	"math"
-)
+import "math"
 
 type Coordinates struct {
 	latitude  float64
@@ -12,11 +9,11 @@ type Coordinates struct {
 
 func NewCoordinates(latitude, longitude float64) (Coordinates, error) {
 	if math.IsNaN(latitude) || math.IsInf(latitude, 0) || latitude < -90 || latitude > 90 {
-		return Coordinates{}, fmt.Errorf("latitude must be between -90 and 90: %v", latitude)
+		return Coordinates{}, invalid("latitude", "must be between -90 and 90")
 	}
 
 	if math.IsNaN(longitude) || math.IsInf(longitude, 0) || longitude < -180 || longitude > 180 {
-		return Coordinates{}, fmt.Errorf("longitude must be between -180 and 180: %v", longitude)
+		return Coordinates{}, invalid("longitude", "must be between -180 and 180")
 	}
 
 	return Coordinates{

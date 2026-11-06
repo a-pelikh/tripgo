@@ -7,7 +7,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/a-pelikh/tripgo/internal/model"
+	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 	"github.com/a-pelikh/tripgo/internal/tx-manager"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -28,7 +28,7 @@ func New(pool *pgxpool.Pool, queryTimeout time.Duration) *repository {
 	}
 }
 
-func (r *repository) CreateTrip(ctx context.Context, tripID model.TripID, userID model.UserID, driverID model.DriverID, startPoint model.Coordinates, endPoint model.Coordinates, price int64, startedAt time.Time) (model.Trip, error) {
+func (r *repository) CreateTrip(ctx context.Context, tripEntity domainTrip.Trip) (domainTrip.Trip, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
@@ -46,52 +46,57 @@ func (r *repository) CreateTrip(ctx context.Context, tripID model.TripID, userID
 			"started_at",
 		).
 		Values(
-			tripID,
-			userID,
-			driverID,
-			startPoint.Latitude(),
-			startPoint.Longitude(),
-			endPoint.Latitude(),
-			endPoint.Longitude(),
-			price,
-			model.StatusActive,
-			startedAt,
+			tripEntity.ID(),
+			tripEntity.UserID(),
+			tripEntity.DriverID(),
+			tripEntity.StartPoint().Latitude(),
+			tripEntity.StartPoint().Longitude(),
+			tripEntity.EndPoint().Latitude(),
+			tripEntity.EndPoint().Longitude(),
+			tripEntity.Price(),
+			tripEntity.Status(),
+			tripEntity.StartedAt(),
 		).
 		Suffix("RETURNING status, started_at").
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
 	if err != nil {
-		return model.Trip{}, fmt.Errorf("build create trip query: %w", err)
+		return domainTrip.Trip{}, fmt.Errorf("build create trip query: %w", err)
 	}
 
 	var (
-		persistedStatus    model.Status
+		persistedStatus    domainTrip.Status
 		persistedStartedAt time.Time
 	)
 
 	if err = r.queryRow(ctx, query, args...).Scan(&persistedStatus, &persistedStartedAt); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "trips_one_active_per_driver_idx" {
-			return model.Trip{}, model.ErrDriverBusy
+			return domainTrip.Trip{}, domainTrip.ErrDriverBusy
 		}
 
-		return model.Trip{}, fmt.Errorf("create trip: %w", err)
+		return domainTrip.Trip{}, fmt.Errorf("create trip: %w", err)
 	}
 
-	return model.Trip{
-		ID:         tripID,
-		UserID:     userID,
-		DriverID:   driverID,
-		StartPoint: startPoint,
-		EndPoint:   endPoint,
-		Price:      price,
-		Status:     persistedStatus,
-		StartedAt:  persistedStartedAt,
-		FinishedAt: nil,
-	}, nil
+	persistedTrip, err := domainTrip.New(
+		tripEntity.ID(),
+		tripEntity.UserID(),
+		tripEntity.DriverID(),
+		tripEntity.StartPoint(),
+		tripEntity.EndPoint(),
+		tripEntity.Price(),
+		persistedStatus,
+		persistedStartedAt,
+		nil,
+	)
+	if err != nil {
+		return domainTrip.Trip{}, fmt.Errorf("restore created trip: %w", err)
+	}
+
+	return persistedTrip, nil
 }
 
-func (r *repository) RecordStatusChange(ctx context.Context, tripID model.TripID, fromStatus *model.Status, toStatus model.Status, reason string) error {
+func (r *repository) RecordStatusChange(ctx context.Context, tripID domainTrip.ID, fromStatus *domainTrip.Status, toStatus domainTrip.Status, reason string) error {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
@@ -111,7 +116,7 @@ func (r *repository) RecordStatusChange(ctx context.Context, tripID model.TripID
 	return nil
 }
 
-func (r *repository) GetTrip(ctx context.Context, tripID model.TripID) (model.Trip, error) {
+func (r *repository) GetTrip(ctx context.Context, tripID domainTrip.ID) (domainTrip.Trip, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
@@ -133,29 +138,29 @@ func (r *repository) GetTrip(ctx context.Context, tripID model.TripID) (model.Tr
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
 	if err != nil {
-		return model.Trip{}, fmt.Errorf("build get trip query: %w", err)
+		return domainTrip.Trip{}, fmt.Errorf("build get trip query: %w", err)
 	}
 
-	trip, err := scanTrip(r.queryRow(ctx, query, args...))
+	tripEntity, err := scanTrip(r.queryRow(ctx, query, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return model.Trip{}, model.ErrTripNotFound
+		return domainTrip.Trip{}, domainTrip.ErrTripNotFound
 	}
 	if err != nil {
-		return model.Trip{}, fmt.Errorf("get trip: %w", err)
+		return domainTrip.Trip{}, fmt.Errorf("get trip: %w", err)
 	}
 
-	return trip, nil
+	return tripEntity, nil
 }
 
-func (r *repository) FinishTrip(ctx context.Context, tripID model.TripID, finishedAt time.Time) (model.Trip, error) {
+func (r *repository) FinishTrip(ctx context.Context, tripEntity domainTrip.Trip) (domainTrip.Trip, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
 	query, args, err := sq.Update("trips").
-		Set("status", model.StatusCompleted).
-		Set("finished_at", finishedAt).
-		Set("updated_at", finishedAt).
-		Where(sq.Eq{"id": uuid.UUID(tripID), "status": model.StatusActive}).
+		Set("status", tripEntity.Status()).
+		Set("finished_at", tripEntity.FinishedAt()).
+		Set("updated_at", tripEntity.FinishedAt()).
+		Where(sq.Eq{"id": uuid.UUID(tripEntity.ID()), "status": domainTrip.StatusActive}).
 		Suffix(`RETURNING
 			id,
 			user_id,
@@ -171,32 +176,32 @@ func (r *repository) FinishTrip(ctx context.Context, tripID model.TripID, finish
 		PlaceholderFormat(sq.Dollar).
 		ToSql()
 	if err != nil {
-		return model.Trip{}, fmt.Errorf("build finish trip query: %w", err)
+		return domainTrip.Trip{}, fmt.Errorf("build finish trip query: %w", err)
 	}
 
-	trip, err := scanTrip(r.queryRow(ctx, query, args...))
+	persistedTrip, err := scanTrip(r.queryRow(ctx, query, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
-		existingTrip, getErr := r.GetTrip(ctx, tripID)
-		if errors.Is(getErr, model.ErrTripNotFound) {
-			return model.Trip{}, model.ErrTripNotFound
+		existingTrip, getErr := r.GetTrip(ctx, tripEntity.ID())
+		if errors.Is(getErr, domainTrip.ErrTripNotFound) {
+			return domainTrip.Trip{}, domainTrip.ErrTripNotFound
 		}
 		if getErr != nil {
-			return model.Trip{}, fmt.Errorf("check trip after unsuccessful finish: %w", getErr)
+			return domainTrip.Trip{}, fmt.Errorf("check trip after unsuccessful finish: %w", getErr)
 		}
-		if existingTrip.Status == model.StatusCompleted {
-			return model.Trip{}, model.ErrTripCompleted
+		if existingTrip.Status() == domainTrip.StatusCompleted {
+			return domainTrip.Trip{}, domainTrip.ErrTripCompleted
 		}
 
-		return model.Trip{}, fmt.Errorf("finish trip: unexpected trip status %q", existingTrip.Status)
+		return domainTrip.Trip{}, fmt.Errorf("finish trip: unexpected trip status %q", existingTrip.Status())
 	}
 	if err != nil {
-		return model.Trip{}, fmt.Errorf("finish trip: %w", err)
+		return domainTrip.Trip{}, fmt.Errorf("finish trip: %w", err)
 	}
 
-	return trip, nil
+	return persistedTrip, nil
 }
 
-func scanTrip(row pgx.Row) (model.Trip, error) {
+func scanTrip(row pgx.Row) (domainTrip.Trip, error) {
 	var (
 		id             uuid.UUID
 		userID         uuid.UUID
@@ -205,7 +210,9 @@ func scanTrip(row pgx.Row) (model.Trip, error) {
 		startLongitude float64
 		endLatitude    float64
 		endLongitude   float64
-		trip           model.Trip
+		price          int64
+		status         domainTrip.Status
+		startedAt      time.Time
 		finishedAt     pgtype.Timestamptz
 	)
 
@@ -217,33 +224,44 @@ func scanTrip(row pgx.Row) (model.Trip, error) {
 		&startLongitude,
 		&endLatitude,
 		&endLongitude,
-		&trip.Price,
-		&trip.Status,
-		&trip.StartedAt,
+		&price,
+		&status,
+		&startedAt,
 		&finishedAt,
 	); err != nil {
-		return model.Trip{}, err
+		return domainTrip.Trip{}, err
 	}
 
-	startPoint, err := model.NewCoordinates(startLatitude, startLongitude)
+	startPoint, err := domainTrip.NewCoordinates(startLatitude, startLongitude)
 	if err != nil {
-		return model.Trip{}, fmt.Errorf("restore trip start point: %w", err)
+		return domainTrip.Trip{}, fmt.Errorf("restore trip start point: %w", err)
 	}
-	endPoint, err := model.NewCoordinates(endLatitude, endLongitude)
+	endPoint, err := domainTrip.NewCoordinates(endLatitude, endLongitude)
 	if err != nil {
-		return model.Trip{}, fmt.Errorf("restore trip end point: %w", err)
+		return domainTrip.Trip{}, fmt.Errorf("restore trip end point: %w", err)
 	}
 
-	trip.ID = model.TripID(id)
-	trip.UserID = model.UserID(userID)
-	trip.DriverID = model.DriverID(driverID)
-	trip.StartPoint = startPoint
-	trip.EndPoint = endPoint
+	var domainFinishedAt *time.Time
 	if finishedAt.Valid {
-		trip.FinishedAt = &finishedAt.Time
+		domainFinishedAt = &finishedAt.Time
 	}
 
-	return trip, nil
+	tripEntity, err := domainTrip.New(
+		domainTrip.ID(id),
+		domainTrip.UserID(userID),
+		domainTrip.DriverID(driverID),
+		startPoint,
+		endPoint,
+		price,
+		status,
+		startedAt,
+		domainFinishedAt,
+	)
+	if err != nil {
+		return domainTrip.Trip{}, fmt.Errorf("restore trip: %w", err)
+	}
+
+	return tripEntity, nil
 }
 
 func (r *repository) queryRow(ctx context.Context, query string, args ...any) pgx.Row {

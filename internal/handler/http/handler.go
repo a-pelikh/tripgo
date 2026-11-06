@@ -10,15 +10,15 @@ import (
 	"strings"
 
 	"github.com/a-pelikh/tripgo/api"
-	"github.com/a-pelikh/tripgo/internal/model"
+	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 	"github.com/google/uuid"
 	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
 )
 
 type tripService interface {
-	CreateTrip(ctx context.Context, userID model.UserID, driverID model.DriverID, startPoint model.Coordinates, endPoint model.Coordinates, price int64) (model.Trip, error)
-	GetTrip(ctx context.Context, tripID model.TripID) (model.Trip, error)
-	FinishTrip(ctx context.Context, tripID model.TripID) (model.Trip, error)
+	CreateTrip(ctx context.Context, userID domainTrip.UserID, driverID domainTrip.DriverID, startPoint domainTrip.Coordinates, endPoint domainTrip.Coordinates, price int64) (domainTrip.Trip, error)
+	GetTrip(ctx context.Context, tripID domainTrip.ID) (domainTrip.Trip, error)
+	FinishTrip(ctx context.Context, tripID domainTrip.ID) (domainTrip.Trip, error)
 	Ready(ctx context.Context) error
 }
 
@@ -72,21 +72,21 @@ func (h *handler) CreateTrip(w http.ResponseWriter, r *http.Request, _ api.Creat
 		return
 	}
 
-	startPoint, err := model.NewCoordinates(request.StartPoint.Latitude, request.StartPoint.Longitude)
+	startPoint, err := domainTrip.NewCoordinates(request.StartPoint.Latitude, request.StartPoint.Longitude)
 	if err != nil {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "Invalid request", "Start point is invalid")
 		return
 	}
 
-	endPoint, err := model.NewCoordinates(request.EndPoint.Latitude, request.EndPoint.Longitude)
+	endPoint, err := domainTrip.NewCoordinates(request.EndPoint.Latitude, request.EndPoint.Longitude)
 	if err != nil {
 		writeProblem(w, r, http.StatusBadRequest, "invalid_request", "Invalid request", "End point is invalid")
 		return
 	}
 
-	trip, err := h.trip.CreateTrip(r.Context(), model.UserID(request.UserId), model.DriverID(request.DriverId), startPoint, endPoint, request.Price)
+	tripEntity, err := h.trip.CreateTrip(r.Context(), domainTrip.UserID(request.UserId), domainTrip.DriverID(request.DriverId), startPoint, endPoint, request.Price)
 	if err != nil {
-		if errors.Is(err, model.ErrDriverBusy) {
+		if errors.Is(err, domainTrip.ErrDriverBusy) {
 			writeProblem(w, r, http.StatusConflict, "driver_busy", "Driver busy", "Driver already has an active trip")
 			return
 		}
@@ -97,9 +97,9 @@ func (h *handler) CreateTrip(w http.ResponseWriter, r *http.Request, _ api.Creat
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Location", "/api/v1/trips/"+uuid.UUID(trip.ID).String())
+	w.Header().Set("Location", "/api/v1/trips/"+uuid.UUID(tripEntity.ID()).String())
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(mapTripToAPI(trip))
+	_ = json.NewEncoder(w).Encode(mapTripToAPI(tripEntity))
 
 }
 
@@ -109,9 +109,9 @@ func (h *handler) GetTrip(w http.ResponseWriter, r *http.Request, tripID api.Tri
 		return
 	}
 
-	trip, err := h.trip.GetTrip(r.Context(), model.TripID(tripID))
+	tripEntity, err := h.trip.GetTrip(r.Context(), domainTrip.ID(tripID))
 	if err != nil {
-		if errors.Is(err, model.ErrTripNotFound) {
+		if errors.Is(err, domainTrip.ErrTripNotFound) {
 			writeProblem(w, r, http.StatusNotFound, "trip_not_found", "Trip not found", "Trip was not found")
 			return
 		}
@@ -122,7 +122,7 @@ func (h *handler) GetTrip(w http.ResponseWriter, r *http.Request, tripID api.Tri
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(mapTripToAPI(trip))
+	_ = json.NewEncoder(w).Encode(mapTripToAPI(tripEntity))
 }
 
 func (h *handler) FinishTrip(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
@@ -131,12 +131,12 @@ func (h *handler) FinishTrip(w http.ResponseWriter, r *http.Request, tripID api.
 		return
 	}
 
-	trip, err := h.trip.FinishTrip(r.Context(), model.TripID(tripID))
+	tripEntity, err := h.trip.FinishTrip(r.Context(), domainTrip.ID(tripID))
 	if err != nil {
 		switch {
-		case errors.Is(err, model.ErrTripNotFound):
+		case errors.Is(err, domainTrip.ErrTripNotFound):
 			writeProblem(w, r, http.StatusNotFound, "trip_not_found", "Trip not found", "Trip was not found")
-		case errors.Is(err, model.ErrTripCompleted):
+		case errors.Is(err, domainTrip.ErrTripCompleted):
 			writeProblem(w, r, http.StatusConflict, "trip_completed", "Trip completed", "Operation is not allowed for a completed trip")
 		default:
 			h.logger.ErrorContext(r.Context(), "failed to finish trip", "error", err)
@@ -146,7 +146,7 @@ func (h *handler) FinishTrip(w http.ResponseWriter, r *http.Request, tripID api.
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(mapTripToAPI(trip))
+	_ = json.NewEncoder(w).Encode(mapTripToAPI(tripEntity))
 }
 
 func (h *handler) Health(w http.ResponseWriter, _ *http.Request) {
@@ -174,23 +174,23 @@ func HandleBindingError(w http.ResponseWriter, r *http.Request, _ error) {
 	writeProblem(w, r, http.StatusBadRequest, "invalid_request", "Invalid request", "Request validation failed")
 }
 
-func mapTripToAPI(trip model.Trip) api.Trip {
+func mapTripToAPI(tripEntity domainTrip.Trip) api.Trip {
 	return api.Trip{
-		Id:       uuid.UUID(trip.ID),
-		UserId:   uuid.UUID(trip.UserID),
-		DriverId: uuid.UUID(trip.DriverID),
+		Id:       uuid.UUID(tripEntity.ID()),
+		UserId:   uuid.UUID(tripEntity.UserID()),
+		DriverId: uuid.UUID(tripEntity.DriverID()),
 		StartPoint: api.Coordinates{
-			Latitude:  trip.StartPoint.Latitude(),
-			Longitude: trip.StartPoint.Longitude(),
+			Latitude:  tripEntity.StartPoint().Latitude(),
+			Longitude: tripEntity.StartPoint().Longitude(),
 		},
 		EndPoint: api.Coordinates{
-			Latitude:  trip.EndPoint.Latitude(),
-			Longitude: trip.EndPoint.Longitude(),
+			Latitude:  tripEntity.EndPoint().Latitude(),
+			Longitude: tripEntity.EndPoint().Longitude(),
 		},
-		Price:      trip.Price,
-		Status:     api.TripStatus(trip.Status),
-		StartedAt:  trip.StartedAt,
-		FinishedAt: trip.FinishedAt,
+		Price:      tripEntity.Price(),
+		Status:     api.TripStatus(tripEntity.Status()),
+		StartedAt:  tripEntity.StartedAt(),
+		FinishedAt: tripEntity.FinishedAt(),
 	}
 }
 
