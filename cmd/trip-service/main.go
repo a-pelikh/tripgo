@@ -10,9 +10,11 @@ import (
 	"github.com/a-pelikh/tripgo/internal/config"
 	httpHandler "github.com/a-pelikh/tripgo/internal/handler/http"
 	"github.com/a-pelikh/tripgo/internal/logger"
-	postgresTripRepository "github.com/a-pelikh/tripgo/internal/repository/postgres/trip"
-	"github.com/a-pelikh/tripgo/internal/service/trip"
+	tripRepository "github.com/a-pelikh/tripgo/internal/repository/trip"
 	postgresTxManager "github.com/a-pelikh/tripgo/internal/tx-manager/postgres"
+	createTrip "github.com/a-pelikh/tripgo/internal/usecase/trip/create"
+	finishTrip "github.com/a-pelikh/tripgo/internal/usecase/trip/finish"
+	getTrip "github.com/a-pelikh/tripgo/internal/usecase/trip/get"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -46,10 +48,12 @@ func main() {
 
 	txManager := postgresTxManager.New(log, pool, cfg.DB.QueryTimeout)
 
-	tripRepository := postgresTripRepository.New(pool, cfg.DB.QueryTimeout)
-	tripService := trip.New(txManager, tripRepository)
+	trips := tripRepository.New(pool, cfg.DB.QueryTimeout)
+	createTripUseCase := createTrip.New(txManager, trips)
+	getTripUseCase := getTrip.New(trips)
+	finishTripUseCase := finishTrip.New(txManager, trips)
 
-	router, err := httpHandler.NewRouter(log, tripService)
+	router, err := httpHandler.NewRouter(log, createTripUseCase, getTripUseCase, finishTripUseCase, trips)
 	if err != nil {
 		log.Error("failed to initialize http router", "error", err)
 		return
