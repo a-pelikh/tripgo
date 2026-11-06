@@ -1,0 +1,12 @@
+name: tripgo
+
+services:
+  trip-service:
+    build: .
+    env_file:
+      - .env.example
+      - .env
+    environment:
+      - DATABASE_URL
+    ports:
+      - "8080:8080"

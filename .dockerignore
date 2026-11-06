@@ -1,0 +1,12 @@
+.git
+.gitignore
+.idea
+.tripgo
+.env
+.env.*
+bin
+README.md
+contracts
+environment.toml
+compose.yaml
+**/*_test.go
