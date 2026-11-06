@@ -6,9 +6,10 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
-	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 )
 
 func (r *Repository) Fetch(ctx context.Context, tripID domainTrip.ID) (domainTrip.Trip, error) {

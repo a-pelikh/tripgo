@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 )
 
 func scanTrip(row pgx.Row) (domainTrip.Trip, error) {

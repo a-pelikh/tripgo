@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
-	tripFinish "github.com/a-pelikh/tripgo/internal/usecase/trip/finish"
 	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
+
+	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
+	tripFinish "github.com/a-pelikh/tripgo/internal/usecase/trip/finish"
 )
 
 func TestUseCaseExecuteSuccess(t *testing.T) {
@@ -19,13 +20,14 @@ func TestUseCaseExecuteSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := NewMocktripRepository(ctrl)
 	tx := NewMocktxManager(ctrl)
+	observer := NewMockobserver(ctrl)
 	expectTransaction(tx)
 	repo.EXPECT().Fetch(gomock.Any(), tripEntity.ID()).Return(tripEntity, nil)
 	repo.EXPECT().Save(gomock.Any(), gomock.Any()).Return(nil)
 	repo.EXPECT().SaveHistory(gomock.Any(), tripEntity.ID(), gomock.Any(), domainTrip.StatusCompleted, "trip completed").Return(nil)
+	observer.EXPECT().TripCompleted(gomock.Any(), gomock.Any())
 
-	result, err := tripFinish.New(tx, repo).Execute(context.Background(), tripEntity.ID())
-
+	result, err := tripFinish.New(tx, repo, observer).Execute(context.Background(), tripEntity.ID())
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -44,10 +46,11 @@ func TestUseCaseExecuteCompletedTrip(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := NewMocktripRepository(ctrl)
 	tx := NewMocktxManager(ctrl)
+	observer := NewMockobserver(ctrl)
 	expectTransaction(tx)
 	repo.EXPECT().Fetch(gomock.Any(), tripEntity.ID()).Return(tripEntity, nil)
 
-	_, err := tripFinish.New(tx, repo).Execute(context.Background(), tripEntity.ID())
+	_, err := tripFinish.New(tx, repo, observer).Execute(context.Background(), tripEntity.ID())
 
 	if !errors.Is(err, domainTrip.ErrTripCompleted) {
 		t.Fatalf("Execute() error = %v, want ErrTripCompleted", err)

@@ -1,9 +1,10 @@
 package finish
 
 import (
+	"github.com/google/uuid"
+
 	"github.com/a-pelikh/tripgo/api"
 	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
-	"github.com/google/uuid"
 )
 
 func toAPI(tripEntity *domainTrip.Trip) api.Trip {

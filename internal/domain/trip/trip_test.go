@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/a-pelikh/tripgo/internal/domain/trip"
 	"github.com/google/uuid"
+
+	"github.com/a-pelikh/tripgo/internal/domain/trip"
 )
 
 func TestTripFinish(t *testing.T) {

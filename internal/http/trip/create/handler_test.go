@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"go.uber.org/mock/gomock"
+
 	"github.com/a-pelikh/tripgo/api"
 	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 	tripCreate "github.com/a-pelikh/tripgo/internal/http/trip/create"
-	"github.com/google/uuid"
-	"go.uber.org/mock/gomock"
 )
 
 const validRequest = `{

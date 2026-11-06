@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 	"github.com/google/uuid"
+
+	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
 )
 
 const tripCreatedReason = "trip created"
@@ -14,10 +15,11 @@ const tripCreatedReason = "trip created"
 type UseCase struct {
 	txManager txManager
 	tripRepo  tripRepository
+	observer  observer
 }
 
-func New(txManager txManager, tripRepo tripRepository) *UseCase {
-	return &UseCase{txManager: txManager, tripRepo: tripRepo}
+func New(txManager txManager, tripRepo tripRepository, observer observer) *UseCase {
+	return &UseCase{txManager: txManager, tripRepo: tripRepo, observer: observer}
 }
 
 func (uc *UseCase) Execute(
@@ -55,5 +57,6 @@ func (uc *UseCase) Execute(
 		return domainTrip.Trip{}, err
 	}
 
+	uc.observer.TripCreated(ctx, &tripEntity)
 	return tripEntity, nil
 }

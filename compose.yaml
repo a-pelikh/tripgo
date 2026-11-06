@@ -8,5 +8,6 @@ services:
       - .env
     environment:
       - DATABASE_URL
+      - OTEL_EXPORTER_OTLP_ENDPOINT
     ports:
       - "8080:8080"

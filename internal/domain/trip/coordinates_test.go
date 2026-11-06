@@ -8,6 +8,11 @@ import (
 	"github.com/a-pelikh/tripgo/internal/domain/trip"
 )
 
+const (
+	latitudeField  = "latitude"
+	longitudeField = "longitude"
+)
+
 func TestNewCoordinates(t *testing.T) {
 	t.Parallel()
 
@@ -19,12 +24,12 @@ func TestNewCoordinates(t *testing.T) {
 	}{
 		{name: "valid", latitude: 59.9398, longitude: 30.3146},
 		{name: "boundary", latitude: -90, longitude: 180},
-		{name: "latitude below range", latitude: -90.1, wantField: "latitude"},
-		{name: "latitude above range", latitude: 90.1, wantField: "latitude"},
-		{name: "latitude NaN", latitude: math.NaN(), wantField: "latitude"},
-		{name: "longitude below range", longitude: -180.1, wantField: "longitude"},
-		{name: "longitude above range", longitude: 180.1, wantField: "longitude"},
-		{name: "longitude infinity", longitude: math.Inf(1), wantField: "longitude"},
+		{name: "latitude below range", latitude: -90.1, wantField: latitudeField},
+		{name: "latitude above range", latitude: 90.1, wantField: latitudeField},
+		{name: "latitude NaN", latitude: math.NaN(), wantField: latitudeField},
+		{name: "longitude below range", longitude: -180.1, wantField: longitudeField},
+		{name: "longitude above range", longitude: 180.1, wantField: longitudeField},
+		{name: "longitude infinity", longitude: math.Inf(1), wantField: longitudeField},
 	}
 
 	for _, tt := range tests {

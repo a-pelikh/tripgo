@@ -13,10 +13,11 @@ const tripCompletedReason = "trip completed"
 type UseCase struct {
 	txManager txManager
 	tripRepo  tripRepository
+	observer  observer
 }
 
-func New(txManager txManager, tripRepo tripRepository) *UseCase {
-	return &UseCase{txManager: txManager, tripRepo: tripRepo}
+func New(txManager txManager, tripRepo tripRepository, observer observer) *UseCase {
+	return &UseCase{txManager: txManager, tripRepo: tripRepo, observer: observer}
 }
 
 func (uc *UseCase) Execute(ctx context.Context, tripID domainTrip.ID) (domainTrip.Trip, error) {
@@ -42,5 +43,6 @@ func (uc *UseCase) Execute(ctx context.Context, tripID domainTrip.ID) (domainTri
 		return domainTrip.Trip{}, err
 	}
 
+	uc.observer.TripCompleted(ctx, &tripEntity)
 	return tripEntity, nil
 }

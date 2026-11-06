@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/a-pelikh/tripgo/internal/tx-manager"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/a-pelikh/tripgo/internal/infra/postgres/transaction"
 )
 
 type Repository struct {
@@ -26,14 +27,14 @@ func (r *Repository) Ping(ctx context.Context) error {
 }
 
 func (r *Repository) queryRow(ctx context.Context, query string, args ...any) pgx.Row {
-	if tx, ok := ctx.Value(tx_manager.TxKey{}).(pgx.Tx); ok {
+	if tx, ok := transaction.FromContext(ctx); ok {
 		return tx.QueryRow(ctx, query, args...)
 	}
 	return r.pool.QueryRow(ctx, query, args...)
 }
 
 func (r *Repository) exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
-	if tx, ok := ctx.Value(tx_manager.TxKey{}).(pgx.Tx); ok {
+	if tx, ok := transaction.FromContext(ctx); ok {
 		return tx.Exec(ctx, query, args...)
 	}
 	return r.pool.Exec(ctx, query, args...)

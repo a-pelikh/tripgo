@@ -106,3 +106,39 @@ func (mr *MocktxManagerMockRecorder) Do(ctx, fn any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*MocktxManager)(nil).Do), ctx, fn)
 }
+
+// Mockobserver is a mock of observer interface.
+type Mockobserver struct {
+	ctrl     *gomock.Controller
+	recorder *MockobserverMockRecorder
+	isgomock struct{}
+}
+
+// MockobserverMockRecorder is the mock recorder for Mockobserver.
+type MockobserverMockRecorder struct {
+	mock *Mockobserver
+}
+
+// NewMockobserver creates a new mock instance.
+func NewMockobserver(ctrl *gomock.Controller) *Mockobserver {
+	mock := &Mockobserver{ctrl: ctrl}
+	mock.recorder = &MockobserverMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *Mockobserver) EXPECT() *MockobserverMockRecorder {
+	return m.recorder
+}
+
+// TripCreated mocks base method.
+func (m *Mockobserver) TripCreated(ctx context.Context, arg1 *trip.Trip) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "TripCreated", ctx, arg1)
+}
+
+// TripCreated indicates an expected call of TripCreated.
+func (mr *MockobserverMockRecorder) TripCreated(ctx, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TripCreated", reflect.TypeOf((*Mockobserver)(nil).TripCreated), ctx, arg1)
+}

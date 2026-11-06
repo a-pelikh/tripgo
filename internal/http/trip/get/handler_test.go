@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
-	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
-	tripGet "github.com/a-pelikh/tripgo/internal/http/trip/get"
 	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
+
+	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
+	tripGet "github.com/a-pelikh/tripgo/internal/http/trip/get"
 )
 
 func TestHandlerGetTripSuccess(t *testing.T) {

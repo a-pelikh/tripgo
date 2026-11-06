@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/a-pelikh/tripgo/internal/http/ready"
 	"go.uber.org/mock/gomock"
+
+	"github.com/a-pelikh/tripgo/internal/http/ready"
 )
 
 func TestHandlerReady(t *testing.T) {

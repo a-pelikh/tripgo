@@ -4,9 +4,10 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/a-pelikh/tripgo/internal/http/problem"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/nethttp-middleware"
+
+	"github.com/a-pelikh/tripgo/internal/http/domainerror"
 )
 
 func Validate(spec *openapi3.T, handler http.Handler) http.Handler {
@@ -15,7 +16,7 @@ func Validate(spec *openapi3.T, handler http.Handler) http.Handler {
 		&nethttpmiddleware.Options{
 			DoNotValidateServers: true,
 			ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, _ nethttpmiddleware.ErrorHandlerOpts) {
-				problem.Write(w, r, http.StatusBadRequest, "invalid_request", "Invalid request", "Request validation failed")
+				domainerror.InvalidRequest(w, r, "Request validation failed")
 			},
 		},
 	)

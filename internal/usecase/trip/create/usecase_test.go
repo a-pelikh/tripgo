@@ -5,10 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
-	tripCreate "github.com/a-pelikh/tripgo/internal/usecase/trip/create"
 	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
+
+	domainTrip "github.com/a-pelikh/tripgo/internal/domain/trip"
+	tripCreate "github.com/a-pelikh/tripgo/internal/usecase/trip/create"
 )
 
 func TestUseCaseExecuteSuccess(t *testing.T) {
@@ -17,12 +18,14 @@ func TestUseCaseExecuteSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := NewMocktripRepository(ctrl)
 	tx := NewMocktxManager(ctrl)
+	observer := NewMockobserver(ctrl)
 	expectTransaction(tx)
 	repo.EXPECT().Save(gomock.Any(), gomock.Any()).Return(nil)
 	repo.EXPECT().SaveHistory(gomock.Any(), gomock.Any(), nil, domainTrip.StatusActive, "trip created").Return(nil)
+	observer.EXPECT().TripCreated(gomock.Any(), gomock.Any())
 	start, end := coordinates(t)
 
-	result, err := tripCreate.New(tx, repo).Execute(
+	result, err := tripCreate.New(tx, repo, observer).Execute(
 		context.Background(),
 		domainTrip.UserID(uuid.New()),
 		domainTrip.DriverID(uuid.New()),
@@ -30,7 +33,6 @@ func TestUseCaseExecuteSuccess(t *testing.T) {
 		end,
 		1450,
 	)
-
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -45,11 +47,12 @@ func TestUseCaseExecuteDriverBusy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := NewMocktripRepository(ctrl)
 	tx := NewMocktxManager(ctrl)
+	observer := NewMockobserver(ctrl)
 	expectTransaction(tx)
 	repo.EXPECT().Save(gomock.Any(), gomock.Any()).Return(domainTrip.ErrDriverBusy)
 	start, end := coordinates(t)
 
-	_, err := tripCreate.New(tx, repo).Execute(
+	_, err := tripCreate.New(tx, repo, observer).Execute(
 		context.Background(),
 		domainTrip.UserID(uuid.New()),
 		domainTrip.DriverID(uuid.New()),
