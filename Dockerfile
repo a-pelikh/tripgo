@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
-    -o /trip-service ./cmd/trip-service
+    -o /trip-service ./cmd/service
 
 FROM gcr.io/distroless/static-debian12:nonroot
 

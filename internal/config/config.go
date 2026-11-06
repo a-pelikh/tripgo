@@ -5,16 +5,20 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
+
+	"github.com/a-pelikh/tripgo/internal/infra/postgres"
+	"github.com/a-pelikh/tripgo/internal/infra/telemetry"
 )
 
-type app struct {
+type Config struct {
 	LogLevel        string        `env:"LOG_LEVEL,required,notEmpty"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT,required"`
-	HTTP            http
-	DB              db
+	HTTP            HTTPConfig
+	DB              postgres.Config
+	Telemetry       telemetry.Config
 }
 
-type http struct {
+type HTTPConfig struct {
 	Addr              string        `env:"HTTP_ADDR,required,notEmpty"`
 	ReadTimeout       time.Duration `env:"HTTP_READ_TIMEOUT,required"`
 	ReadHeaderTimeout time.Duration `env:"HTTP_READ_HEADER_TIMEOUT,required"`
@@ -22,28 +26,19 @@ type http struct {
 	IdleTimeout       time.Duration `env:"HTTP_IDLE_TIMEOUT,required"`
 }
 
-type db struct {
-	URL             string        `env:"DATABASE_URL,required,notEmpty"`
-	MaxConns        int32         `env:"DATABASE_MAX_CONNS,required"`
-	MinConns        int32         `env:"DATABASE_MIN_CONNS,required"`
-	MaxConnLifetime time.Duration `env:"DATABASE_MAX_CONN_LIFETIME,required"`
-	ConnectTimeout  time.Duration `env:"DATABASE_CONNECT_TIMEOUT,required"`
-	QueryTimeout    time.Duration `env:"DATABASE_QUERY_TIMEOUT,required"`
-}
-
-func Load() (app, error) {
-	cfg, err := env.ParseAs[app]()
+func Load() (Config, error) {
+	cfg, err := env.ParseAs[Config]()
 	if err != nil {
-		return app{}, fmt.Errorf("parse config: %w", err)
+		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
 	if err := cfg.validate(); err != nil {
-		return app{}, fmt.Errorf("validate config: %w", err)
+		return Config{}, fmt.Errorf("validate config: %w", err)
 	}
 
 	return cfg, nil
 }
 
-func (cfg app) validate() error {
+func (cfg Config) validate() error {
 	if cfg.ShutdownTimeout <= 0 {
 		return fmt.Errorf("SHUTDOWN_TIMEOUT must be positive")
 	}
@@ -59,29 +54,17 @@ func (cfg app) validate() error {
 	if cfg.HTTP.IdleTimeout <= 0 {
 		return fmt.Errorf("HTTP_IDLE_TIMEOUT must be positive")
 	}
-	if cfg.DB.MaxConns <= 0 {
-		return fmt.Errorf("DATABASE_MAX_CONNS must be positive")
+	if err := cfg.DB.Validate(); err != nil {
+		return fmt.Errorf("postgres config: %w", err)
 	}
-	if cfg.DB.MinConns < 0 {
-		return fmt.Errorf("DATABASE_MIN_CONNS must not be negative")
-	}
-	if cfg.DB.MinConns > cfg.DB.MaxConns {
-		return fmt.Errorf("DATABASE_MIN_CONNS must not exceed DATABASE_MAX_CONNS")
-	}
-	if cfg.DB.MaxConnLifetime <= 0 {
-		return fmt.Errorf("DATABASE_MAX_CONN_LIFETIME must be positive")
-	}
-	if cfg.DB.ConnectTimeout <= 0 {
-		return fmt.Errorf("DATABASE_CONNECT_TIMEOUT must be positive")
-	}
-	if cfg.DB.QueryTimeout <= 0 {
-		return fmt.Errorf("DATABASE_QUERY_TIMEOUT must be positive")
+	if err := cfg.Telemetry.Validate(); err != nil {
+		return fmt.Errorf("telemetry config: %w", err)
 	}
 
 	return nil
 }
 
-func MustLoad() app {
+func MustLoad() Config {
 	cfg, err := Load()
 	if err != nil {
 		panic(err)

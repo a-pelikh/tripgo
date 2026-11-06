@@ -1,15 +1,15 @@
 # TripGo Trip Service
 
-HTTP-сервис первой лабораторной работы курса по Go. Сервис создаёт поездки,
+HTTP-сервис второй лабораторной работы курса по Go. Сервис создаёт поездки,
 возвращает их по идентификатору и завершает активные поездки. Данные хранятся
 в PostgreSQL, изменения статуса дополнительно записываются в
-`trip_status_history`.
+`trip_status_history`. Сервис экспортирует метрики и трейсы через OpenTelemetry.
 
 ## Требования
 
 - Go 1.27 или новее;
 - `tripgoctl`;
-- локальное окружение лабораторной работы 1 с PostgreSQL.
+- локальное окружение лабораторной работы 2 с PostgreSQL и observability.
 
 ## Запуск
 
@@ -83,6 +83,11 @@ curl -i -X POST http://localhost:8080/api/v1/trips \
 | `DATABASE_MAX_CONN_LIFETIME` | Максимальное время жизни соединения |
 | `DATABASE_CONNECT_TIMEOUT` | Таймаут подключения к PostgreSQL |
 | `DATABASE_QUERY_TIMEOUT` | Таймаут запроса к PostgreSQL |
+| `OTEL_SERVICE_NAME` | Имя сервиса в телеметрии |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Адрес OTLP-коллектора |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Протокол OTLP (`http/protobuf`) |
+| `OTEL_RESOURCE_ATTRIBUTES` | Атрибуты ресурса OpenTelemetry |
+| `OTEL_TRACES_SAMPLER` | Режим сэмплирования трейсов |
 
 Безопасные примеры значений находятся в [`.env.example`](.env.example).
 
@@ -93,8 +98,67 @@ make generate      # перегенерировать Go-код из OpenAPI
 make migrate       # применить все миграции
 make migrate-down  # откатить последнюю миграцию
 make run           # запустить сервис
-make test          # собрать и запустить тесты с race detector
+make lint          # запустить обязательные линтеры и форматтеры
+make test          # дважды запустить unit-тесты с race detector и покрытием
+make test-integration # применить миграции и запустить тесты с реальной БД
 ```
+
+## Архитектура
+
+Зависимости направлены внутрь и вручную связываются в
+`internal/container`:
+
+```text
+HTTP → usecase → domain
+         ↑
+repository → PostgreSQL
+```
+
+- `internal/domain/trip` содержит модель поездки, правила перехода состояния и
+  доменные ошибки. Пакет не зависит от HTTP, PostgreSQL и OpenTelemetry.
+- `internal/usecase/trip/<action>` описывает сценарий. Узкие неэкспортируемые
+  интерфейсы репозитория, транзакции и наблюдателя объявлены рядом с их
+  потребителем в `contract.go`.
+- `internal/http/trip/<action>` переводит HTTP-запросы в аргументы usecase.
+  Единый маппинг доменных ошибок в RFC 9457 находится в
+  `internal/http/domainerror`.
+- `internal/repository/trip` реализует хранение доменной модели, а
+  `internal/infra/postgres` создаёт пул и менеджер транзакций.
+- `internal/infra/telemetry` инициализирует `slog`, OpenTelemetry SDK,
+  экспортёры и бизнес-метрики.
+- `internal/container` — единственное место создания конкретных реализаций;
+  `cmd/service/main.go` только загружает конфигурацию, запускает сервер и
+  выполняет graceful shutdown.
+
+Отдельного пакета `model` нет намеренно: между usecase и repository передаётся
+доменная `trip.Trip`, а транспортные структуры из OpenAPI остаются только в
+HTTP-слое. Это не создаёт вторую модель с теми же полями и не связывает домен с
+API.
+
+## Тесты
+
+Доменные правила проверяются table-driven тестами. Usecase и HTTP-хендлеры
+тестируются изолированно с `gomock`; моки генерируются директивами
+`go:generate` в каждом `contract.go` и коммитятся рядом с тестами.
+
+Интеграционные тесты репозитория имеют build-тег `integration`, используют
+PostgreSQL из `tripgoctl` и случайные UUID. Каждый тест удаляет созданную
+поездку. Отдельный сценарий намеренно нарушает ограничение таблицы истории и
+проверяет, что транзакция откатила первую вставку в `trips`.
+
+## Observability
+
+HTTP middleware выполняются в порядке `Recover → Tracing → Logging → Metrics`.
+Логи пишутся через JSON `slog` и содержат `trace_id`/`span_id`. HTTP и SQL
+создают спаны, а метрики и трейсы экспортируются в OTLP-коллектор. Сервис
+публикует обязательные HTTP/DB-метрики и бизнес-счётчики
+`tripgo.trips.created` и `tripgo.trips.completed`.
+
+После `tripgoctl connect` ссылки на Jaeger и Grafana печатаются в терминал. Для
+проверки создайте поездку, найдите её HTTP-трейс вместе с вложенным SQL-спаном в
+Jaeger, затем найдите `http_server_request_duration` и
+`tripgo_trips_created` в Grafana. `trace_id` из JSON-лога должен находить тот же
+трейс.
 
 ## Принятые решения
 
@@ -145,13 +209,14 @@ make test          # собрать и запустить тесты с race det
 
 ```bash
 make generate
-go build ./...
+make lint
 make test
+make test-integration
 ```
 
-Также необходимо проверить миграции в обе стороны, повторные и конкурентные
-`create`/`finish`, переключение `/ready` при остановке PostgreSQL и graceful
-shutdown по `SIGTERM`.
+Также необходимо проверить трейс в Jaeger, метрики в Grafana, переключение
+`/ready` при остановке PostgreSQL и graceful shutdown по `SIGTERM`. Скриншоты
+Jaeger и Grafana прикладываются к описанию PR.
 
 ## Docker
 
